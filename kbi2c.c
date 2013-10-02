@@ -2,16 +2,20 @@
 #include "hal.h"
 #include "i2c.h"
 #include "chprintf.h"
+#include "iocard.h"
+#include "kbi2c.h"
 
 /* input buffer */
-static uint8_t rx_data[2];
+static uint8_t rx_data[64];
 
 /* temperature value */
-static int16_t temperature = 0;
+static uint16_t temperature = 0;
 
 static i2cflags_t errors = 0;
 
-#define addr 18
+static iocard_data_t iocard_data;
+
+#define addr 1
 
 /* This is main function. */
 i2cflags_t kb_i2c_request_fake(void)
@@ -20,7 +24,7 @@ i2cflags_t kb_i2c_request_fake(void)
 	systime_t tmo = MS2ST(100);
 
 	i2cAcquireBus(&I2CD1);
-	status = i2cMasterReceiveTimeout(&I2CD1, addr, rx_data, 2, tmo);
+	status = i2cMasterReceiveTimeout(&I2CD1, addr, (uint8_t *)&iocard_data, sizeof(iocard_data), tmo);
 	i2cReleaseBus(&I2CD1);
 
 	if (status == RDY_RESET){
@@ -32,16 +36,20 @@ i2cflags_t kb_i2c_request_fake(void)
 		//	return;
 		//}
 	} else {
-		temperature = rx_data[0]; //(rx_data[0] << 8) + rx_data[1];
+		iocard_data_t *iodata = (iocard_data_t *)rx_data;
+		//temperature = rx_data[0]; //(rx_data[0] << 8) + rx_data[1];
+		temperature = iodata->analog_in[2];
 	}
 
 	return 0;
 }
 
-int16_t kb_i2c_get_data()
+uint16_t kb_i2c_get_data(void)
 {
-	int16_t tmp = temperature;
+	uint16_t tmp = temperature;
 	temperature = 0;
+
+	return iocard_data.analog_in[2];
 	return tmp;
 }
 

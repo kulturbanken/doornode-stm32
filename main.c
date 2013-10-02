@@ -75,8 +75,9 @@ static WORKING_AREA(waI2C, 128);
 static msg_t I2C(void *arg) {
 	(void)arg;
 	while (TRUE) {
-		kb_i2c_request_fake();
-		chThdSleepMilliseconds(1);
+		if(!kb_i2c_request_fake())
+			chprintf(&SD1, "result: %d\r\n", kb_i2c_get_data());
+		chThdSleepMilliseconds(500);
 	}
 
 	return 0;
