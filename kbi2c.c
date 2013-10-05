@@ -15,7 +15,7 @@ static i2cflags_t errors = 0;
 
 static iocard_data_t iocard_data;
 
-#define addr 1
+#define addr (1 << 5)
 
 /* This is main function. */
 i2cflags_t kb_i2c_request_fake(void)
