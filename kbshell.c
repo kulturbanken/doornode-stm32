@@ -56,7 +56,7 @@ static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 	}
 
 	if (!strcmp(argv[0], "test")) {
-		if (!kb_i2c_request_fake()) {
+		if (!kb_i2c_request_fake(1)) {
 			chprintf(chp, "i2c message sent successfully\r\n");
 			chprintf(chp, "result: %d\r\n", kb_i2c_get_data());
 		} else {

@@ -31,6 +31,9 @@
 #include "chprintf.h"
 
 #include "kbi2c.h"
+#include "iocard.h"
+
+static int polls = 0;
 
 extern void shellCheckRunning(void);
 
@@ -47,6 +50,8 @@ static msg_t GreenLED(void *arg) {
 		chThdSleepMilliseconds(500);
 		palSetPad(GPIOA, GPIOA_GREEN_LED);
 		chThdSleepMilliseconds(500);
+		chprintf(&SD1, "Polls per sec: %d\r\n", polls);
+		polls = 0;
 	}
 
 	return 0;
@@ -62,9 +67,11 @@ static msg_t YellowLED(void *arg) {
 	(void)arg;
 	while (TRUE) {
 		palClearPad(GPIOA, GPIOA_YELLOW_LED);
-		chThdSleepMilliseconds(100);
+		chThdSleepMilliseconds(20);
 		palSetPad(GPIOA, GPIOA_YELLOW_LED);
-		chThdSleepMilliseconds(100);
+		chThdSleepMilliseconds(20);
+
+		kb_i2c_set_output(1);
 	}
 
 	return 0;
@@ -74,10 +81,22 @@ static msg_t YellowLED(void *arg) {
 static WORKING_AREA(waI2C, 128);
 static msg_t I2C(void *arg) {
 	(void)arg;
+	uint8_t address = 0;
 	while (TRUE) {
-		if(!kb_i2c_request_fake())
-			chprintf(&SD1, "result: %d\r\n", kb_i2c_get_data());
-		chThdSleepMilliseconds(500);
+		address = 1;
+		if(!kb_i2c_request_fake(address)) {
+			iocard_data_t *iodata = kb_i2c_get_iocard_data();
+			chprintf(&SD1, "IO-card %d: SIR1=%d\r\n", address, iodata->analog_in.sirene1);
+		} else {
+			chprintf(&SD1, "IO-card %d: Failed to get IO data\r\n", address);
+		}
+		address++;
+		if (address > 1)
+			address = 0;
+		//kb_i2c_request_fake();
+		chThdSleepMilliseconds(100);
+		//kb_i2c_set_output();
+		polls++;
 	}
 
 	return 0;
@@ -185,6 +204,8 @@ int main(void)
 	chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
 	chThdCreateStatic(waKeyPad, sizeof(waKeyPad), NORMALPRIO, KeyPad, NULL);
 
+	chprintf((BaseSequentialStream *)&SD1, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
+	
 	/*
 	 * Normal main() thread activity, in this demo it does nothing.
 	 */
