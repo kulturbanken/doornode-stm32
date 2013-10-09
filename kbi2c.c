@@ -48,45 +48,31 @@ iocard_data_t *kb_i2c_get_iocard_data(void)
 	return &iocard_data;
 }
 
-i2cflags_t kb_i2c_set_output(uint8_t address)
+i2cflags_t kb_i2c_set_output(uint8_t address, uint8_t mask, uint8_t data)
 {
-	static uint8_t out = 0, mask = 0;
-	static uint8_t pin = 0;
-	uint8_t data[2];
+	uint8_t buf[2];
 	systime_t tmo = MS2ST(100);
 	msg_t status = RDY_OK;
 
 	address &= 0x03;
 	address <<= 5;
 
-	mask = (1<<pin);
-
-	pin++;
-	if (pin > 7) {
-		out ^= 0xFF;
-		pin = 0;
-	}
-
-	data[0] = mask;
-	data[1] = out;
+	buf[0] = mask;
+	buf[1] = data;
 
 	i2cAcquireBus(&I2CD1);
-	status = i2cMasterTransmitTimeout(&I2CD1, address | 0x01, (uint8_t *) data, 2, NULL, 0, tmo);
+	status = i2cMasterTransmitTimeout(&I2CD1, address | 0x01, (uint8_t *) buf, 2, NULL, 0, tmo);
 	i2cReleaseBus(&I2CD1);
 
-	if (status == RDY_RESET){
-		errors = i2cGetErrors(&I2CD1);
-		return errors;
-		
-		//if (errors == I2CD_ACK_FAILURE){
-			/* there is no slave with given address on the bus, or it was die */
-		//	return;
-		//}
-	} else {
-		
+	switch (status) {
+	case RDY_RESET:
+		kb_i2c_reset();
+		return i2cGetErrors(&I2CD1);
+	case RDY_TIMEOUT:
+		return 12345;
+	default:
+		return 0;
 	}
-
-	return 0;
 }
 
 uint16_t kb_i2c_get_data(void)
@@ -101,10 +87,20 @@ static const I2CConfig i2cfg1 = {
 	FAST_DUTY_CYCLE_2,
 };
 
+void kb_i2c_reset(void)
+{
+	i2cAcquireBus(&I2CD1);
+	i2cStop(&I2CD1);
+	chThdSleepMilliseconds(100);
+	i2cStart(&I2CD1, &i2cfg1);
+	i2cReleaseBus(&I2CD1);
+}
+
 void kb_i2c_init(void)
 {
 	i2cInit();
 
+	i2cStop(&I2CD1); /* Required to make I2C start without power reset */
 	i2cStart(&I2CD1, &i2cfg1);
 
 	/* tune ports for I2C1*/
@@ -112,4 +108,6 @@ void kb_i2c_init(void)
 	palSetPadMode(IOPORT2, 7, PAL_MODE_STM32_ALTERNATE_OPENDRAIN);
 
 	chThdSleepMilliseconds(100);  /* Just to be safe. */
+
+	kb_i2c_set_output(1, 0xFF, 0x00);
 }

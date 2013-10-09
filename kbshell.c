@@ -5,6 +5,7 @@
 #include "chprintf.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "kbi2c.h"
 
@@ -48,6 +49,8 @@ static void cmd_threads(BaseSequentialStream *chp, int argc, char *argv[])
 
 static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 {
+	i2cflags_t errors = 0;
+
 	if (argc == 0) {
 		chprintf(chp, 
 			 "Usage:\r\n"
@@ -56,12 +59,20 @@ static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 	}
 
 	if (!strcmp(argv[0], "test")) {
-		if (!kb_i2c_request_fake(1)) {
+		if ((errors = kb_i2c_request_fake(1))) {
 			chprintf(chp, "i2c message sent successfully\r\n");
 			chprintf(chp, "result: %d\r\n", kb_i2c_get_data());
 		} else {
-			chprintf(chp, "i2c message transmission failed\r\n");
+			chprintf(chp, "i2c message transmission failed with error %d\r\n", errors);
 		}
+	} else if (!strcmp(argv[0], "set") && argc >= 2) {
+		if ((errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0xFF)))
+			chprintf(chp, "I2C transmission failed with error %d\r\n", errors);
+	} else if (!strcmp(argv[0], "clr") && argc >= 2) {
+		if ((errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0x00)))
+			chprintf(chp, "I2C transmission failed with error %d\r\n", errors);
+	} else if (!strcmp(argv[0], "reset")) {
+		kb_i2c_reset();
 	} else {
 		chprintf(chp, "Unknown i2c command %s\r\n", argv[0]);
 	}

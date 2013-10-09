@@ -6,8 +6,9 @@
 
 void kb_i2c_init(void);
 i2cflags_t kb_i2c_request_fake(uint8_t address);
-i2cflags_t kb_i2c_set_output(uint8_t address);
+i2cflags_t kb_i2c_set_output(uint8_t address, uint8_t mask, uint8_t data);
 uint16_t kb_i2c_get_data(void);
 iocard_data_t *kb_i2c_get_iocard_data(void);
+void kb_i2c_reset(void);
 
 #endif

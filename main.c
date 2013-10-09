@@ -37,6 +37,8 @@ static int polls = 0;
 
 extern void shellCheckRunning(void);
 
+static BaseSequentialStream *chp;
+
 /*
  * Green LED blinker thread, times are in milliseconds.
  * GPIOA,5 is the green LED on the Olimexino STM32.
@@ -50,7 +52,7 @@ static msg_t GreenLED(void *arg) {
 		chThdSleepMilliseconds(500);
 		palSetPad(GPIOA, GPIOA_GREEN_LED);
 		chThdSleepMilliseconds(500);
-		chprintf(&SD1, "Polls per sec: %d\r\n", polls);
+		//chprintf(chp, "Polls per sec: %d\r\n", polls);
 		polls = 0;
 	}
 
@@ -70,8 +72,6 @@ static msg_t YellowLED(void *arg) {
 		chThdSleepMilliseconds(20);
 		palSetPad(GPIOA, GPIOA_YELLOW_LED);
 		chThdSleepMilliseconds(20);
-
-		kb_i2c_set_output(1);
 	}
 
 	return 0;
@@ -82,20 +82,28 @@ static WORKING_AREA(waI2C, 128);
 static msg_t I2C(void *arg) {
 	(void)arg;
 	uint8_t address = 0;
+	uint8_t last_over_current_byte = 0;
+
 	while (TRUE) {
+#if 0
 		address = 1;
 		if(!kb_i2c_request_fake(address)) {
 			iocard_data_t *iodata = kb_i2c_get_iocard_data();
-			chprintf(&SD1, "IO-card %d: SIR1=%d\r\n", address, iodata->analog_in.sirene1);
+			if (iodata->over_current_byte != last_over_current_byte) {
+				chprintf(chp, "New over_current status: 0x%02X\r\n",
+					 iodata->over_current_byte);
+				last_over_current_byte = iodata->over_current_byte;
+			}
 		} else {
-			chprintf(&SD1, "IO-card %d: Failed to get IO data\r\n", address);
+			chprintf(chp, "IO-card %d: Failed to get IO data\r\n", address);
+			chThdSleepMilliseconds(500);
 		}
+
 		address++;
 		if (address > 1)
 			address = 0;
-		//kb_i2c_request_fake();
+#endif
 		chThdSleepMilliseconds(100);
-		//kb_i2c_set_output();
 		polls++;
 	}
 
@@ -149,8 +157,8 @@ static msg_t KeyPad(void *arg) {
 		}
 
 		if (cmdlen > 4) {
-			chSequentialStreamWrite(&SD1, cmd, cmdlen);
-			chSequentialStreamWrite(&SD1, (uint8_t *)"\r\n", 2);
+			cmd[cmdlen] = '\0';
+			chprintf(chp, "KEYPAD cmd = %s\r\n", cmd);
 		}
 		
 		chThdSleepMilliseconds(100);
@@ -190,6 +198,8 @@ int main(void)
 	};
 
 	sdStart(&SD1, NULL); /* Shell */
+	chp = (BaseSequentialStream *)&SD1;
+
 	sdStart(&SD2, &keypad_config); /* Keypad */
 
 	shellInit();
@@ -204,7 +214,7 @@ int main(void)
 	chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
 	chThdCreateStatic(waKeyPad, sizeof(waKeyPad), NORMALPRIO, KeyPad, NULL);
 
-	chprintf((BaseSequentialStream *)&SD1, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
+	chprintf(chp, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
 	
 	/*
 	 * Normal main() thread activity, in this demo it does nothing.
