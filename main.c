@@ -83,12 +83,21 @@ static msg_t I2C(void *arg) {
 	(void)arg;
 	uint8_t address = 0;
 	uint8_t last_over_current_byte = 0;
+	iocard_data_t *iodata;
+	int n;
+
+	chThdSleepMilliseconds(100);
+	chprintf(chp, "\r\n\r\n");
+	for (n = 0; n < 12; n++) {
+		chprintf(chp, " CH%2d | ", n);
+	}
+	chprintf(chp, "\r\n\r\n");
 
 	while (TRUE) {
-#if 0
+#if 1
 		address = 1;
 		if(!kb_i2c_request_fake(address)) {
-			iocard_data_t *iodata = kb_i2c_get_iocard_data();
+			iodata = kb_i2c_get_iocard_data();
 			if (iodata->over_current_byte != last_over_current_byte) {
 				chprintf(chp, "New over_current status: 0x%02X\r\n",
 					 iodata->over_current_byte);
@@ -97,6 +106,11 @@ static msg_t I2C(void *arg) {
 		} else {
 			chprintf(chp, "IO-card %d: Failed to get IO data\r\n", address);
 			chThdSleepMilliseconds(500);
+		}
+
+		chprintf(chp, "\r");
+		for (n = 0; n < 12; n++) {
+			chprintf(chp, "%5d | ", iodata->analog_in_array[n]);
 		}
 
 		address++;
@@ -205,6 +219,7 @@ int main(void)
 	shellInit();
 
 	kb_i2c_init();
+
 
 	/*
 	 * Creates the blinker threads.
