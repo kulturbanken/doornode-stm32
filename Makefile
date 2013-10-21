@@ -54,6 +54,8 @@ endif
 # Project, sources and paths
 #
 
+CHIBIOS = ../ChibiOS
+
 # Define project name here
 PROJECT = ch
 
