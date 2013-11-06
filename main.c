@@ -38,6 +38,7 @@ static int polls = 0;
 extern void shellCheckRunning(void);
 
 static BaseSequentialStream *chp;
+static BaseAsynchronousChannel *kPadCh;
 
 /*
  * Green LED blinker thread, times are in milliseconds.
@@ -46,13 +47,13 @@ static BaseSequentialStream *chp;
  */
 static WORKING_AREA(waGreenLED, 128);
 static msg_t GreenLED(void *arg) {
+	chRegSetThreadName("GreenLED");
 	(void)arg;
 	while (TRUE) {
 		palClearPad(GPIOA, GPIOA_GREEN_LED);
 		chThdSleepMilliseconds(500);
 		palSetPad(GPIOA, GPIOA_GREEN_LED);
 		chThdSleepMilliseconds(500);
-		//chprintf(chp, "Polls per sec: %d\r\n", polls);
 		polls = 0;
 	}
 
@@ -66,6 +67,7 @@ static msg_t GreenLED(void *arg) {
  */
 static WORKING_AREA(waYellowLED, 128);
 static msg_t YellowLED(void *arg) {
+	chRegSetThreadName("YellowLED");
 	(void)arg;
 	while (TRUE) {
 		palClearPad(GPIOA, GPIOA_YELLOW_LED);
@@ -80,29 +82,31 @@ static msg_t YellowLED(void *arg) {
 
 static WORKING_AREA(waI2C, 128);
 static msg_t I2C(void *arg) {
+	chRegSetThreadName("I2C");
 	(void)arg;
 	uint8_t address = 0;
-	uint8_t last_over_current_byte = 0;
-	iocard_data_t *iodata;
+	iocard_data_t *iodata = NULL;
 	int n;
+
+	char *chtxt[] = {
+			"SIR1", "FLA1", "SIR2", "FLA2",
+			"LCK2", "LCK1", "KPAD", "IR",
+			"VOLT", "TAMP", "IR1",  "IR2",
+			"DIGI", "OVRC"
+	};
 
 	chThdSleepMilliseconds(100);
 	chprintf(chp, "\r\n\r\n");
-	for (n = 0; n < 12; n++) {
-		chprintf(chp, " CH%2d | ", n);
+	for (n = 0; n < (int)(sizeof(chtxt)/sizeof(chtxt[0])); n++) {
+		chprintf(chp, " %4s | ", chtxt[n]);
 	}
-	chprintf(chp, "\r\n\r\n");
+	chprintf(chp, "\r\n");
 
 	while (TRUE) {
 #if 1
 		address = 1;
 		if(!kb_i2c_request_fake(address)) {
 			iodata = kb_i2c_get_iocard_data();
-			if (iodata->over_current_byte != last_over_current_byte) {
-				chprintf(chp, "New over_current status: 0x%02X\r\n",
-					 iodata->over_current_byte);
-				last_over_current_byte = iodata->over_current_byte;
-			}
 		} else {
 			chprintf(chp, "IO-card %d: Failed to get IO data\r\n", address);
 			chThdSleepMilliseconds(500);
@@ -112,6 +116,8 @@ static msg_t I2C(void *arg) {
 		for (n = 0; n < 12; n++) {
 			chprintf(chp, "%5d | ", iodata->analog_in_array[n]);
 		}
+		chprintf(chp, " 0x%02x | ", iodata->digital_in_byte);
+		chprintf(chp, " 0x%02x | ", iodata->over_current_byte);
 
 		address++;
 		if (address > 1)
@@ -128,11 +134,15 @@ static msg_t I2C(void *arg) {
 #define STX 0x02
 #define ETX 0x03
 
-static WORKING_AREA(waKeyPad, 128);
+static WORKING_AREA(waKeyPad, 256);
 static msg_t KeyPad(void *arg) {
+	chRegSetThreadName("KeyPad");
 	(void)arg;
 	uint8_t cmd[64], bcc, n;
 	int cmdlen, stop, read_data;
+
+	chThdSleepMilliseconds(500);
+	chprintf(chp, "Polling keypad:\r\n");
 
 	while (TRUE) {
 		cmdlen = 0;
@@ -155,16 +165,18 @@ static msg_t KeyPad(void *arg) {
 
 		cmd[cmdlen++] = bcc;
 
-		chSequentialStreamWrite(&SD2, cmd, cmdlen);
+		chnWrite(kPadCh, cmd, cmdlen);
 
 		stop = read_data = cmdlen = 0;
-		while (!stop) {
-			n = chSequentialStreamGet(&SD2);
+		while (TRUE) {
+			if (!chnReadTimeout(kPadCh, &n, 1, MS2ST(500)))
+				break;
+
 			if (n == STX) {
 				read_data = 1;
 			} else if (n == ETX) {
-				n = chSequentialStreamGet(&SD2);
-				stop = 1;
+				chnReadTimeout(kPadCh, &n, 1, MS2ST(500));
+				break;
 			} else if (read_data) {
 				cmd[cmdlen++] = n;
 			}
@@ -172,7 +184,12 @@ static msg_t KeyPad(void *arg) {
 
 		if (cmdlen > 4) {
 			cmd[cmdlen] = '\0';
-			chprintf(chp, "KEYPAD cmd = %s\r\n", cmd);
+			chprintf(chp, "\r\nKEYPAD cmdlen = %d cmd = ", cmdlen);
+			for (n = 0; n < cmdlen; n++)
+				chprintf(chp, "%c", cmd[n]);
+			chprintf(chp, "\r\n");
+		} else {
+			//chprintf(chp, "\r\nKEYPAD ERROR\r\n");
 		}
 		
 		chThdSleepMilliseconds(100);
@@ -180,6 +197,19 @@ static msg_t KeyPad(void *arg) {
 
 	return 0;
 }
+/* To make backtrace work on unhandled exceptions */
+/* http://koti.kapsi.fi/jpa/stuff/other/stm32-hardfault-backtrace.html */
+void **HARDFAULT_PSP;
+register void *stack_pointer asm("sp");
+
+void HardFaultVector()
+{
+    // Hijack the process stack pointer to make backtrace work
+    asm("mrs %0, psp" : "=r"(HARDFAULT_PSP) : :);
+    stack_pointer = HARDFAULT_PSP;
+    while(1);
+}
+
 
 /*
  * Application entry point.
@@ -215,31 +245,30 @@ int main(void)
 	chp = (BaseSequentialStream *)&SD1;
 
 	sdStart(&SD2, &keypad_config); /* Keypad */
+	kPadCh = (BaseAsynchronousChannel *)&SD2;
 
 	shellInit();
 
-	kb_i2c_init();
+	//kb_i2c_init();
+	//kb_i2c_set_output(1, 0xFF, 1<<6);
 
+	//chprintf(chp, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
 
-	/*
-	 * Creates the blinker threads.
-	 */
+	//chThdSleepMilliseconds(300);
+
 	chThdCreateStatic(waGreenLED, sizeof(waGreenLED), NORMALPRIO, GreenLED, NULL);
 	chThdCreateStatic(waYellowLED, sizeof(waYellowLED), NORMALPRIO, YellowLED, NULL);
-	chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
+	//chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
 	chThdCreateStatic(waKeyPad, sizeof(waKeyPad), NORMALPRIO, KeyPad, NULL);
 
-	chprintf(chp, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
-	
-	/*
-	 * Normal main() thread activity, in this demo it does nothing.
-	 */
+	//chThdSleepMilliseconds(100);
+	//chprintf(chp, "Starting up...\r\n");
+
+
 	while (TRUE) {
-		shellCheckRunning();
+		//shellCheckRunning();
 
-		chThdSleepMilliseconds(500);
-		//sdPut(&SD1, 'A');
-		//chprintf((BaseSequentialStream *)&SD1, "Tjosan\r\n");
-
+		chThdSleepMilliseconds(100);
+		//chprintf(chp, "Running\r\n");
 	}
 }

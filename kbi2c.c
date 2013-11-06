@@ -1,14 +1,12 @@
 #include "ch.h"
 #include "hal.h"
 #include "i2c.h"
-#include "chprintf.h"
 #include "iocard.h"
 #include "kbi2c.h"
 
 static i2cflags_t errors = 0;
 
 static iocard_data_t iocard_data;
-
 
 /* This is main function. */
 i2cflags_t kb_i2c_request_fake(uint8_t address)

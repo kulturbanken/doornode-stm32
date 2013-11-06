@@ -3,6 +3,9 @@
 # NOTE: Can be overridden externally.
 #
 
+JTAG_INTERFACE = stlink-v2
+#JTAG_INTERFACE = olimex-arm-usb-ocd.cfg
+
 # Compiler options here.
 ifeq ($(USE_OPT),)
   USE_OPT = -O2 -ggdb -fomit-frame-pointer -falign-functions=16
@@ -70,6 +73,7 @@ include $(CHIBIOS)/test/test.mk
 
 # Define linker script file here
 LDSCRIPT= linker.ld
+#LDSCRIPT= $(PORTLD)/STM32F103xB.ld
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
 # setting.
@@ -214,3 +218,6 @@ ifeq ($(USE_FWLIB),yes)
 endif
 
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/rules.mk
+
+install: all
+	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08005000 reset'

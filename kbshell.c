@@ -67,16 +67,23 @@ static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 			chprintf(chp, "i2c message transmission failed with error %d\r\n", errors);
 		}
 	} else if (!strcmp(argv[0], "set") && argc >= 2) {
-		if ((errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0xFF)))
-			chprintf(chp, "I2C transmission failed with error %d\r\n", errors);
+		if (!strcmp(argv[1], "all"))
+			errors = kb_i2c_set_output(1, 0xFF, 0xfF);
+		else
+			errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0xFF);
 	} else if (!strcmp(argv[0], "clr") && argc >= 2) {
-		if ((errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0x00)))
-			chprintf(chp, "I2C transmission failed with error %d\r\n", errors);
+		if (!strcmp(argv[1], "all"))
+			errors = kb_i2c_set_output(1, 0xFF, 0x00);
+		else
+			errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0x00);
 	} else if (!strcmp(argv[0], "reset")) {
 		kb_i2c_reset();
 	} else {
 		chprintf(chp, "Unknown i2c command %s\r\n", argv[0]);
 	}
+
+	if (errors)
+		chprintf(chp, "I2C transmission failed with error %d\r\n", errors);
 }
 
 static const ShellCommand commands[] = {
