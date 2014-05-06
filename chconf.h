@@ -44,7 +44,7 @@
  * @details The initial location of the vector table. Necessary for using the
  *          onboard Maple USB bootloader.
  */
-#define CORTEX_VTOR_INIT 0x00005000
+//#define CORTEX_VTOR_INIT 0x00005000
 
 /**
  * @brief   System tick frequency.

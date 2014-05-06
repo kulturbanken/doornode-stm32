@@ -89,6 +89,9 @@ CSRC = $(PORTSRC) \
        $(CHIBIOS)/os/various/chprintf.c \
        kbi2c.c \
        kbshell.c \
+       kbcan.c \
+       kbiocard.c \
+       kbkeypad.c \
        main.c
 
 
@@ -220,4 +223,5 @@ endif
 include $(CHIBIOS)/os/ports/GCC/ARMCMx/rules.mk
 
 install: all
-	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08005000 reset'
+	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08000000 reset'
+#	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08005000 reset'

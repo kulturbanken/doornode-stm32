@@ -1,15 +1,11 @@
 #include "ch.h"
 #include "hal.h"
 #include "i2c.h"
-#include "iocard.h"
 #include "kbi2c.h"
 
 static i2cflags_t errors = 0;
 
-static iocard_data_t iocard_data;
-
-/* This is main function. */
-i2cflags_t kb_i2c_request_fake(uint8_t address)
+i2cflags_t kb_i2c_request(uint8_t address, void *buf, int buflen)
 {
 	msg_t status = RDY_OK;
 	systime_t tmo = MS2ST(100);
@@ -18,7 +14,7 @@ i2cflags_t kb_i2c_request_fake(uint8_t address)
 	address <<= 5;
 
 	i2cAcquireBus(&I2CD1);
-	status = i2cMasterReceiveTimeout(&I2CD1, address, (uint8_t *)&iocard_data, sizeof(iocard_data), tmo);
+	status = i2cMasterReceiveTimeout(&I2CD1, address, buf, buflen, tmo);
 	i2cReleaseBus(&I2CD1);
 
 	if (status == RDY_OK)
@@ -26,7 +22,7 @@ i2cflags_t kb_i2c_request_fake(uint8_t address)
 	else
 		return 1;
 
-	if (status == RDY_RESET){
+	if (status == RDY_RESET) {
 		return -1;
 		errors = i2cGetErrors(&I2CD1);
 		return errors;
@@ -39,11 +35,6 @@ i2cflags_t kb_i2c_request_fake(uint8_t address)
 	}
 
 	return 0;
-}
-
-iocard_data_t *kb_i2c_get_iocard_data(void)
-{
-	return &iocard_data;
 }
 
 i2cflags_t kb_i2c_set_output(uint8_t address, uint8_t mask, uint8_t data)
@@ -71,11 +62,6 @@ i2cflags_t kb_i2c_set_output(uint8_t address, uint8_t mask, uint8_t data)
 	default:
 		return 0;
 	}
-}
-
-uint16_t kb_i2c_get_data(void)
-{
-	return iocard_data.analog_in.sirene1;
 }
 
 /* I2C1 */

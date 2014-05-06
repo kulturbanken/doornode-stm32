@@ -30,8 +30,14 @@ MEMORY
      * Offset of the flash and RAM for the use of the Maple USB
      * bootloader.
      */
+/*
     flash : org = 0x08005000, len = 128k - 0x5000
     ram : org = 0x20000C00, len = 20k - 0xC00
+*/
+    
+    flash : org = 0x08000000, len = 128k 
+    ram : org = 0x20000000, len = 20k 
+
 }
 
 __ram_start__           = ORIGIN(ram);

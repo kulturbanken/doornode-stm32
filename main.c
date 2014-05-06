@@ -1,29 +1,3 @@
-/*
-  ChibiOS/RT - Copyright (C) 2006,2007,2008,2009,2010,2011 Giovanni Di Sirio.
-
-  This file is part of ChibiOS/RT.
-
-  ChibiOS/RT is free software; you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation; either version 3 of the License, or
-  (at your option) any later version.
-
-  ChibiOS/RT is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program. If not, see <http://www.gnu.org/licenses/>.
-
-  ---
-
-  A special exception to the GPL can be applied should you wish to distribute
-  a combined work that includes ChibiOS/RT, without being obliged to provide
-  the source code for any proprietary components. See the file exception.txt
-  for full details of how and when the exception can be applied.
-*/
-
 #include "ch.h"
 #include "hal.h"
 #include "test.h"
@@ -32,177 +6,19 @@
 
 #include "kbi2c.h"
 #include "iocard.h"
-
-static int polls = 0;
-
-extern void shellCheckRunning(void);
+#include "kbcan.h"
+#include "kbiocard.h"
+#include "kbkeypad.h"
+#include "kbshell.h"
 
 static BaseSequentialStream *chp;
-static BaseAsynchronousChannel *kPadCh;
 
-/*
- * Green LED blinker thread, times are in milliseconds.
- * GPIOA,5 is the green LED on the Olimexino STM32.
- * GPIOA_GREEN_LED is defined as 5 in the board header.
- */
-static WORKING_AREA(waGreenLED, 128);
-static msg_t GreenLED(void *arg) {
-	chRegSetThreadName("GreenLED");
-	(void)arg;
-	while (TRUE) {
-		palClearPad(GPIOA, GPIOA_GREEN_LED);
-		chThdSleepMilliseconds(500);
-		palSetPad(GPIOA, GPIOA_GREEN_LED);
-		chThdSleepMilliseconds(500);
-		polls = 0;
-	}
-
-	return 0;
-}
-
-/*
- * Yellow LED blinker thread, times are in milliseconds.
- * GPIOA,1 is the yellow LED on the Olimexino STM32.
- * GPIOA_YELLOW_LED is defined as 1 in the board header.
- */
-static WORKING_AREA(waYellowLED, 128);
-static msg_t YellowLED(void *arg) {
-	chRegSetThreadName("YellowLED");
-	(void)arg;
-	while (TRUE) {
-		palClearPad(GPIOA, GPIOA_YELLOW_LED);
-		chThdSleepMilliseconds(20);
-		palSetPad(GPIOA, GPIOA_YELLOW_LED);
-		chThdSleepMilliseconds(20);
-	}
-
-	return 0;
-}
-
-
-static WORKING_AREA(waI2C, 128);
-static msg_t I2C(void *arg) {
-	chRegSetThreadName("I2C");
-	(void)arg;
-	uint8_t address = 0;
-	iocard_data_t *iodata = NULL;
-	int n;
-
-	char *chtxt[] = {
-			"SIR1", "FLA1", "SIR2", "FLA2",
-			"LCK2", "LCK1", "KPAD", "IR",
-			"VOLT", "TAMP", "IR1",  "IR2",
-			"DIGI", "OVRC"
-	};
-
-	chThdSleepMilliseconds(100);
-	chprintf(chp, "\r\n\r\n");
-	for (n = 0; n < (int)(sizeof(chtxt)/sizeof(chtxt[0])); n++) {
-		chprintf(chp, " %4s | ", chtxt[n]);
-	}
-	chprintf(chp, "\r\n");
-
-	while (TRUE) {
-#if 1
-		address = 1;
-		if(!kb_i2c_request_fake(address)) {
-			iodata = kb_i2c_get_iocard_data();
-		} else {
-			chprintf(chp, "IO-card %d: Failed to get IO data\r\n", address);
-			chThdSleepMilliseconds(500);
-		}
-
-		chprintf(chp, "\r");
-		for (n = 0; n < 12; n++) {
-			chprintf(chp, "%5d | ", iodata->analog_in_array[n]);
-		}
-		chprintf(chp, " 0x%02x | ", iodata->digital_in_byte);
-		chprintf(chp, " 0x%02x | ", iodata->over_current_byte);
-
-		address++;
-		if (address > 1)
-			address = 0;
-#endif
-		chThdSleepMilliseconds(100);
-		polls++;
-	}
-
-	return 0;
-}
-
-#define SOH 0x01
-#define STX 0x02
-#define ETX 0x03
-
-static WORKING_AREA(waKeyPad, 256);
-static msg_t KeyPad(void *arg) {
-	chRegSetThreadName("KeyPad");
-	(void)arg;
-	uint8_t cmd[64], bcc, n;
-	int cmdlen, stop, read_data;
-
-	chThdSleepMilliseconds(500);
-	chprintf(chp, "Polling keypad:\r\n");
-
-	while (TRUE) {
-		cmdlen = 0;
-		cmd[cmdlen++] = SOH;
-		cmd[cmdlen++] = 'S';
-		/* ID */
-		cmd[cmdlen++] = '0';
-		cmd[cmdlen++] = '0';
-		/* Function */
-		cmd[cmdlen++] = 'A';
-		cmd[cmdlen++] = '5';
-		cmd[cmdlen++] = STX;
-		/* Data */
-		cmd[cmdlen++] = ETX;
-
-		bcc = 0;
-		for (n = 0; n < cmdlen; n++)
-			bcc ^= cmd[n];
-		bcc |= 0x20;
-
-		cmd[cmdlen++] = bcc;
-
-		chnWrite(kPadCh, cmd, cmdlen);
-
-		stop = read_data = cmdlen = 0;
-		while (TRUE) {
-			if (!chnReadTimeout(kPadCh, &n, 1, MS2ST(500)))
-				break;
-
-			if (n == STX) {
-				read_data = 1;
-			} else if (n == ETX) {
-				chnReadTimeout(kPadCh, &n, 1, MS2ST(500));
-				break;
-			} else if (read_data) {
-				cmd[cmdlen++] = n;
-			}
-		}
-
-		if (cmdlen > 4) {
-			cmd[cmdlen] = '\0';
-			chprintf(chp, "\r\nKEYPAD cmdlen = %d cmd = ", cmdlen);
-			for (n = 0; n < cmdlen; n++)
-				chprintf(chp, "%c", cmd[n]);
-			chprintf(chp, "\r\n");
-		} else {
-			//chprintf(chp, "\r\nKEYPAD ERROR\r\n");
-		}
-		
-		chThdSleepMilliseconds(100);
-	}
-
-	return 0;
-}
 /* To make backtrace work on unhandled exceptions */
 /* http://koti.kapsi.fi/jpa/stuff/other/stm32-hardfault-backtrace.html */
 void **HARDFAULT_PSP;
 register void *stack_pointer asm("sp");
 
-void HardFaultVector()
+void HardFaultVector(void)
 {
     // Hijack the process stack pointer to make backtrace work
     asm("mrs %0, psp" : "=r"(HARDFAULT_PSP) : :);
@@ -210,10 +26,6 @@ void HardFaultVector()
     while(1);
 }
 
-
-/*
- * Application entry point.
- */
 int main(void)
 {
 	/*
@@ -223,52 +35,43 @@ int main(void)
 	 * - Kernel initialization, the main() function becomes a thread and the
 	 *   RTOS is active.
 	 */
+
 	halInit();
 	chSysInit();
 
-	/* TX+RX on USART1 */
-	palSetPadMode(IOPORT1, 9, PAL_MODE_STM32_ALTERNATE_PUSHPULL);
-	palSetPadMode(IOPORT1, 10, PAL_MODE_INPUT);
+	//palSetPadMode(GPIOA, GPIOA_YELLOW_LED, PAL_MODE_OUTPUT_PUSHPULL);
+	//palSetPadMode(GPIOA, GPIOA_GREEN_LED, PAL_MODE_OUTPUT_PUSHPULL);
 
-	/* TX+RX on USART2 */
-	palSetPadMode(IOPORT1, 2, PAL_MODE_STM32_ALTERNATE_PUSHPULL);
-	palSetPadMode(IOPORT1, 3, PAL_MODE_INPUT);
+	kb_shell_init();
+	chp = kb_shell_get_stream();
+	chprintf(chp, "kb_shell_init\r\n");
 
-	static const SerialConfig keypad_config = {
-		9600,
-		0,
-		USART_CR2_STOP1_BITS | USART_CR2_LINEN,
-		0
-	};
+	kb_i2c_init();
+	chprintf(chp, "kb_i2c_init\r\n");
 
-	sdStart(&SD1, NULL); /* Shell */
-	chp = (BaseSequentialStream *)&SD1;
+	kb_keypad_init();
+	chprintf(chp, "kb_keypad_init\r\n");
 
-	sdStart(&SD2, &keypad_config); /* Keypad */
-	kPadCh = (BaseAsynchronousChannel *)&SD2;
+	kb_iocard_init();
+	chprintf(chp, "kb_iocard_init\r\n");
 
-	shellInit();
+	iocard_t *first_card = kb_iocard_get_card(0);
+	while (!first_card->has_data) {
+		chprintf(chp, "Waiting first IO card to settle.\r\n");
+		chThdSleepMilliseconds(100);
+	}
 
-	//kb_i2c_init();
-	//kb_i2c_set_output(1, 0xFF, 1<<6);
+	int node_id = first_card->data.dip_switch & 0x3F;
+	chprintf(chp, " * Node ID: %d\r\n", node_id);
+	chprintf(chp, " CAN ID: 0x%08x\r\n", node_id << 21);
 
-	//chprintf(chp, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
-
-	//chThdSleepMilliseconds(300);
-
-	chThdCreateStatic(waGreenLED, sizeof(waGreenLED), NORMALPRIO, GreenLED, NULL);
-	chThdCreateStatic(waYellowLED, sizeof(waYellowLED), NORMALPRIO, YellowLED, NULL);
-	//chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
-	chThdCreateStatic(waKeyPad, sizeof(waKeyPad), NORMALPRIO, KeyPad, NULL);
-
-	//chThdSleepMilliseconds(100);
-	//chprintf(chp, "Starting up...\r\n");
+	kb_can_init(node_id);
+	chprintf(chp, "kb_can_init\r\n");
 
 
 	while (TRUE) {
-		//shellCheckRunning();
+		kb_shell_check_running();
 
 		chThdSleepMilliseconds(100);
-		//chprintf(chp, "Running\r\n");
 	}
 }
