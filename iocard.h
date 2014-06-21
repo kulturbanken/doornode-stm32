@@ -19,8 +19,9 @@ typedef struct {
 		struct {
 			uint8_t   door1:1;
 			uint8_t   door2:1;
+			uint8_t   _unused1:1;
 			uint8_t   balcony:1;
-			uint8_t   _unused:5;
+			uint8_t   _unused2:4;
 		} digital_in;
 		uint8_t  digital_in_byte;
 	};

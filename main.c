@@ -114,9 +114,19 @@ static msg_t I2C(void *arg) {
 
 		chprintf(chp, "\r");
 		for (n = 0; n < 12; n++) {
-			chprintf(chp, "%5d | ", iodata->analog_in_array[n]);
+			uint16_t v = iodata->analog_in_array[n];
+			if ((v > 60 && n < 8)
+					|| (n == 8 && (v < 1380 || v > 1430))
+					|| (n > 8 && (v < 550 || v > 650)))
+				chprintf(chp, "\033[31m");
+			chprintf(chp, "%5d", iodata->analog_in_array[n]);
+			chprintf(chp, "\033[0m");
+			chprintf(chp, " | ");
 		}
-		chprintf(chp, " 0x%02x | ", iodata->digital_in_byte);
+		chprintf(chp, "  %03d | ", 0
+				+ (!iodata->digital_in.door1 ? 100 : 0)
+				+ (!iodata->digital_in.door2 ? 10 : 0)
+				+ (!iodata->digital_in.balcony ? 1 : 0));
 		chprintf(chp, " 0x%02x | ", iodata->over_current_byte);
 
 		address++;
@@ -140,9 +150,6 @@ static msg_t KeyPad(void *arg) {
 	(void)arg;
 	uint8_t cmd[64], bcc, n;
 	int cmdlen, stop, read_data;
-
-	chThdSleepMilliseconds(500);
-	chprintf(chp, "Polling keypad:\r\n");
 
 	while (TRUE) {
 		cmdlen = 0;
@@ -249,8 +256,9 @@ int main(void)
 
 	shellInit();
 
-	//kb_i2c_init();
+	kb_i2c_init();
 	//kb_i2c_set_output(1, 0xFF, 1<<6);
+	kb_i2c_set_output(1, 0xFF, 0xFF);
 
 	//chprintf(chp, "sizeof(iocard_data_t)=%d\r\n", sizeof(iocard_data_t));
 
@@ -258,15 +266,14 @@ int main(void)
 
 	chThdCreateStatic(waGreenLED, sizeof(waGreenLED), NORMALPRIO, GreenLED, NULL);
 	chThdCreateStatic(waYellowLED, sizeof(waYellowLED), NORMALPRIO, YellowLED, NULL);
-	//chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
+	chThdCreateStatic(waI2C, sizeof(waI2C), NORMALPRIO, I2C, NULL);
 	chThdCreateStatic(waKeyPad, sizeof(waKeyPad), NORMALPRIO, KeyPad, NULL);
 
 	//chThdSleepMilliseconds(100);
 	//chprintf(chp, "Starting up...\r\n");
 
-
 	while (TRUE) {
-		//shellCheckRunning();
+		shellCheckRunning();
 
 		chThdSleepMilliseconds(100);
 		//chprintf(chp, "Running\r\n");
