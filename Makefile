@@ -225,3 +225,6 @@ include $(CHIBIOS)/os/ports/GCC/ARMCMx/rules.mk
 install: all
 	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08000000 reset'
 #	openocd -f openocd.cfg  -c 'program build/ch.bin 0x08005000 reset'
+
+install-serial: all
+	stm32flash -b 230400 -w build/ch.bin -v -g 0x0 /dev/tty.usbserial-AD01SU69
