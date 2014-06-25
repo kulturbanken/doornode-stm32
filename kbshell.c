@@ -31,6 +31,26 @@ static void cmd_cantest(BaseSequentialStream *chp, int argc, char *argv[])
 	chprintf(chp, "CAN msg queued\r\n");
 }
 
+static void cmd_setout(BaseSequentialStream *chp, int argc, char *argv[])
+{
+	if (argc < 3) {
+		chprintf(chp, "Usage: setout module port state\r\n");
+		return;
+	}
+
+	int module = atoi(argv[0]);
+	int port = atoi(argv[1]);
+	int state = atoi(argv[2]);
+
+	chprintf(chp, "module %d port %d state %d\r\n", module, port, state);
+
+	iocard_t *card = kb_iocard_get_card(module);
+	if (state)
+		card->data.digital_out_byte |= (1 << port);
+	else
+		card->data.digital_out_byte &= ~(1 << port);
+}
+
 static void cmd_iocard(BaseSequentialStream *chp, int argc, char *argv[])
 {
 	if (argc == 0) {
@@ -41,7 +61,7 @@ static void cmd_iocard(BaseSequentialStream *chp, int argc, char *argv[])
 	}
 
 	int address = atoi(argv[0]);
-	iocard_t *card = kb_iocard_get_card(0);
+	iocard_t *card = kb_iocard_get_card(address);
 	iocard_data_t *iodata = &card->data;
 	int n;
 
@@ -127,29 +147,21 @@ static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 	if (argc == 0) {
 		chprintf(chp, 
 			 "Usage:\r\n"
-			 "  i2c test\r\n");
+			 "  i2c set|clr [pin]|all\r\n");
 		return;
 	}
-	iocard_data_t iodata;
+	iocard_t *card = kb_iocard_get_card(0);
 
-	if (!strcmp(argv[0], "test")) {
-		if ((errors = kb_i2c_request(1, &iodata, sizeof(iodata)))) {
-			chprintf(chp, "i2c message sent successfully\r\n");
-		} else {
-			chprintf(chp, "i2c message transmission failed with error %d\r\n", errors);
-		}
-	} else if (!strcmp(argv[0], "set") && argc >= 2) {
+	if (!strcmp(argv[0], "set") && argc >= 2) {
 		if (!strcmp(argv[1], "all"))
-			errors = kb_i2c_set_output(1, 0xFF, 0xfF);
+			card->data.digital_out_byte = 0xFF;
 		else
-			errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0xFF);
+			card->data.digital_out_byte |= (1 << atoi(argv[1]));
 	} else if (!strcmp(argv[0], "clr") && argc >= 2) {
 		if (!strcmp(argv[1], "all"))
-			errors = kb_i2c_set_output(1, 0xFF, 0x00);
+			card->data.digital_out_byte = 0x00;
 		else
-			errors = kb_i2c_set_output(1, (1 << atoi(argv[1])), 0x00);
-	} else if (!strcmp(argv[0], "reset")) {
-		kb_i2c_reset();
+			card->data.digital_out_byte &= ~(1 << atoi(argv[1]));
 	} else {
 		chprintf(chp, "Unknown i2c command %s\r\n", argv[0]);
 	}
@@ -161,6 +173,7 @@ static void cmd_i2c(BaseSequentialStream *chp, int argc, char *argv[])
 static const ShellCommand commands[] = {
 	{"mem", cmd_mem},
 	{"threads", cmd_threads},
+	{"setout", cmd_setout},
 	{"i2c", cmd_i2c},
 	{"regs", cmd_regs},
 	{"iocard", cmd_iocard},

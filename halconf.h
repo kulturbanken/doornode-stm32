@@ -160,6 +160,13 @@
 #define HAL_USE_USB                 FALSE
 #endif
 
+/**
+ * @brief   Enables the USB subsystem.
+ */
+#if !defined(HAL_USE_IWDG) || defined(__DOXYGEN__)
+#define HAL_USE_IWDG                 FALSE
+#endif
+
 /*===========================================================================*/
 /* ADC driver related settings.                                              */
 /*===========================================================================*/

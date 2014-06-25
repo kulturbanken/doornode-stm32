@@ -50,7 +50,7 @@ typedef struct {
 			uint16_t  int_voltage;      /* Internal VCC voltage */
 			uint16_t  int_bandgap;      /* Internal bandgap voltage */
 		} analog_in;
-		uint16_t analog_in_array[12];
+		uint16_t analog_in_array[15];
 	};
 } __attribute__ ((__packed__)) iocard_data_t;
 

@@ -1,8 +1,16 @@
+#include <string.h>
 #include "ch.h"
 #include "hal.h"
 #include "kbkeypad.h"
+#include "kbshell.h"
+#include "chprintf.h"
+
+#include "kbcan.h"
+
+bool kb_keypad_ok_flag = false;
 
 static BaseAsynchronousChannel *kPadCh;
+static BaseSequentialStream *chp;
 
 #define SOH 0x01
 #define STX 0x02
@@ -54,6 +62,8 @@ static msg_t KeyPad(void *arg) {
 				cmd[cmdlen++] = n;
 			}
 		}
+
+		// TODO: Check BBC!!
 #if 0
 		if (cmdlen > 4) {
 			cmd[cmdlen] = '\0';
@@ -65,6 +75,29 @@ static msg_t KeyPad(void *arg) {
 			//chprintf(chp, "\r\nKEYPAD ERROR\r\n");
 		}
 #endif
+
+		if (cmdlen > 4) {
+			cmd[cmdlen] = '\0';
+			char *tok = (char *)cmd;
+			char *tagid = strsep(&tok, ":");
+			char *code = strsep(&tok, ":");
+			char *inputs = strsep(&tok, ":");
+
+			chprintf(chp, "tagid='%s', code='%s', inputs='%s'\r\n", tagid, code, inputs);
+			
+			if (strlen(tagid) >= 8) {
+				int s = strlen(tagid);
+				char *data_start = tagid + (s - 8); // Only grab the last 8 bytes
+				kb_can_msg_new(0, 0, 10, data_start, 8);
+			}
+
+			if (strlen(code) > 0 && strlen(code) <= 8) {
+				kb_can_msg_new(0, 0, 11, code, strlen(code));
+			}
+
+			/* Just ignore the input pins on the keypad, not used */
+		}
+
 		chThdSleepMilliseconds(100);
 	}
 
@@ -76,6 +109,8 @@ void kb_keypad_init(void)
 	/* TX+RX on USART2 */
 	palSetPadMode(GPIOA, 2, PAL_MODE_STM32_ALTERNATE_PUSHPULL);
 	palSetPadMode(GPIOA, 3, PAL_MODE_INPUT);
+
+	chp = kb_shell_get_stream();
 
 	static const SerialConfig keypad_config = {
 		9600,

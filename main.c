@@ -3,6 +3,7 @@
 #include "test.h"
 #include "shell.h"
 #include "chprintf.h"
+//#include "iwdg.h"
 
 #include "kbi2c.h"
 #include "iocard.h"
@@ -38,7 +39,15 @@ int main(void)
 
 	halInit();
 	chSysInit();
-
+/*
+	IWDGConfig wdg_cfg = {
+		.counter = IWDG_COUNTER_MAX,
+		.div     = IWDG_DIV_256
+	};
+	iwdgInit();
+	iwdgStart(&IWDGD, &wdg_cfg);
+	iwdgReset(&IWDGD);
+*/
 	//palSetPadMode(GPIOA, GPIOA_YELLOW_LED, PAL_MODE_OUTPUT_PUSHPULL);
 	//palSetPadMode(GPIOA, GPIOA_GREEN_LED, PAL_MODE_OUTPUT_PUSHPULL);
 
@@ -68,10 +77,17 @@ int main(void)
 	kb_can_init(node_id);
 	chprintf(chp, "kb_can_init\r\n");
 
+	/* Report my existance */
+	kb_can_msg_new(0, 0, 0, NULL, 0);
 
 	while (TRUE) {
 		kb_shell_check_running();
 
 		chThdSleepMilliseconds(100);
+
+		if (kb_can_ok_flag && kb_keypad_ok_flag && kb_iocard_ok_flag) {
+			kb_can_ok_flag = kb_keypad_ok_flag = kb_iocard_ok_flag = false;
+			//iwdgReset(&IWDGD);
+		}
 	}
 }

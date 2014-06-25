@@ -2,10 +2,17 @@
 #include <hal.h>
 #include <string.h>
 
+#include "kbshell.h"
+#include "kbiocard.h"
 #include "kbcan.h"
+#include "chprintf.h"
+
+static BaseSequentialStream *chp;
 
 static int node_id;
 static bool can_is_ready = false;
+
+bool kb_can_ok_flag = false;
 
 #define KB_CAN_MSG_QUEUE_LENGTH 16
 
@@ -50,6 +57,9 @@ int kb_can_msg_new(int priority, int modid, int endpoint, char *data, int datale
 
 	chBSemSignal(&msgq.sem);
 
+	//chprintf(chp, "Added new CAN pkg with prio %d, modid %d, endpoint %d, datalen %d\r\n",
+	//	priority, modid, endpoint, datalen);
+
 	return 0;
 }
 
@@ -61,6 +71,32 @@ static kb_can_msg_t msgq_get_next_msg(void)
 	msgq.start = (msgq.start + 1) % KB_CAN_MSG_QUEUE_LENGTH;
 
 	return msg;
+}
+
+static void handle_can_frame(CANRxFrame *frame)
+{
+	int nodeid, modid, endpoint, datalen;
+	//char *data;
+
+	nodeid = (frame->EID >> 21) & 0x3F;
+	modid = (frame->EID >> 17) & 0x0F;
+	endpoint = (frame->EID >> 11) & 0x3F;
+	datalen = frame->DLC;
+	//data = frame->data8;
+
+	kb_can_ok_flag = true;
+
+	chprintf(chp, "Got CAN: nodeid=%d modid=%d endpoint=%d datalen=%d data[0]=%d\r\n",
+		nodeid, modid, endpoint, datalen, frame->data8[0]);
+
+	if (modid > 0 && endpoint >= 0 && endpoint < 8) {
+		int state = frame->data8[0];
+		iocard_t *card = kb_iocard_get_card(modid - 1);
+		if (state)
+			card->data.digital_out_byte |= (1 << endpoint);
+		else
+			card->data.digital_out_byte &= ~(1 << endpoint);
+	}
 }
 
 /*
@@ -78,6 +114,7 @@ static kb_can_msg_t msgq_get_next_msg(void)
  		if (chEvtWaitAnyTimeout(ALL_EVENTS, MS2ST(100)) == 0)
  			continue;
  		while (canReceive(&CAND1, CAN_ANY_MAILBOX, &rxmsg, TIME_IMMEDIATE) == RDY_OK) {
+ 			handle_can_frame(&rxmsg);
       /* Process message.*/
       //palTogglePad(IOPORT3, GPIOC_LED);
  			palTogglePad(GPIOA, GPIOA_YELLOW_LED);
@@ -143,7 +180,7 @@ static msg_t can_tx(void * p) {
  * 500KBaud, automatic wakeup, automatic recover from abort mode.
  */
 
-#define brp ((36000000/18)/500000)
+#define brp ((36000000/18)/50000) // = 40
 
 static const CANConfig cancfg = {
  	CAN_MCR_ABOM | 
@@ -153,12 +190,11 @@ static const CANConfig cancfg = {
  	0
  	,
 	//CAN_BTR_LBKM |
- 	//CAN_BTR_SJW(1) | 
-  	//CAN_BTR_TS2(6) |
-  	//CAN_BTR_TS1(9) | 
-  	//CAN_BTR_BRP(6)
-  	//0x001c0003
- 	((((4-1) & 0x03) << 24) | (((5-1) & 0x07) << 20) | (((12-1) & 0x0F) << 16) | ((brp-1) & 0x1FF))
+ 	CAN_BTR_SJW(3) | 
+  	CAN_BTR_TS2(4) |
+  	CAN_BTR_TS1(11) |
+  	CAN_BTR_BRP(brp - 1)
+ 	//((((4-1) & 0x03) << 24) | (((5-1) & 0x07) << 20) | (((12-1) & 0x0F) << 16) | ((brp-1) & 0x1FF))
  };
 
  /*
@@ -222,6 +258,8 @@ void kb_can_init(int _node_id)
  	canInit();
  	setup_can_filter();
 	canStart(&CAND1, &cancfg);
+
+	chp = kb_shell_get_stream();
 
 	chMtxInit(&msgq.mtx);
 	chBSemInit(&msgq.sem, 0);
